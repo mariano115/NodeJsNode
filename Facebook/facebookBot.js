@@ -7,7 +7,9 @@ const axios = require("axios");
 //files
 const config = require("../config");
 const dialogflow = require("../dialogflow");
-const { structProtoToJson } = require("./helpers/structFunctions");
+const {
+    structProtoToJson
+} = require("./helpers/structFunctions");
 const TicketObject = require("./Ticket");
 //mongodb models
 const Ticket = require("../Models/Tickets");
@@ -16,8 +18,18 @@ const Ticket = require("../Models/Tickets");
 let idTicket;
 let motivo;
 const endpointJava =
-    "https://0cded5b69183.ngrok.io/POCFacebook/receiveinformation";
-
+    "https://4f045003f84f.ngrok.io/Microservice/receiveinformation";
+const endpointJira = "https://aa5835511f0c.ngrok.io/ticket";
+let miMapa = new Map();
+let ticket = {
+    firstName: "",
+    lastName: "",
+    senderId: "",
+    uniqueIdentifier: "",
+    contactType: "",
+    userMessage: "",
+    url: "",
+};
 let senderID;
 
 // Messenger API parameters
@@ -45,15 +57,19 @@ if (!config.FB_APP_SECRET) {
 
 const sessionIds = new Map();
 
+
 // for Facebook verification
+
 router.post("/dialogFlow/", function (req, res) {
     if (req) {
         console.log(req.body);
         sendToDialogFlow(
-            req.body.senderId,
+            req.body.sender,
             req.body.text,
-            req.body.hashsender,
-            req.body.type
+            req.body.hashSender,
+            req.body.type,
+            req.body.url,
+            req.body.inputMethod
         );
         senderReal = req.body.sender;
         senderID = "4633829030023736";
@@ -232,75 +248,48 @@ async function handleDialogFlowAction(
     action,
     messages,
     contexts,
-    parameters
+    parameters,
+    type,
+    url,
+    inputMethod
 ) {
     switch (action) {
         case "Saludo.Info.action": {
             let userData = await getUserData(senderID);
-            //let userData = await getUserData(sender);
-            /*console.log("====================================================");
-            console.log(sender);
-            console.log(userData);
-            console.log("====================================================");
-            await sendTextMessage(
-                sender,
-                "Hola " + userData.first_name + " " + userData.last_name + "!"
-            );*/
             await sendTextMessageToMS(
                 sender,
                 "Hola " + userData.first_name + " " + userData.last_name + "!"
             );
-            await sendGenericMessageMS(sender, [
-                {
-                    title: "Que operacion desea realizar",
-                    image_url:
-                        "https://data.ilikesales.com.ar/retailers/logos/000/000/204/medium/banco-credicoop.jpg?1552673321",
-                    subtitle: "Elija alguna opcion",
-                    buttons: [
-                        {
-                            type: "postback",
-                            title: "Consulta",
-                            payload: "realizar_consulta",
-                        },
-                        {
-                            type: "postback",
-                            title: "Queja o Reclamo",
-                            payload: "realizar_queja_reclamo",
-                        },
-                        {
-                            type: "postback",
-                            title: "Otro",
-                            payload: "otro",
-                        },
-                    ],
-                },
-            ]);
-            /*
-            await sendGenericMessage(sender, [
-                {
-                    title: "Que operacion desea realizar",
-                    image_url:
-                        "https://data.ilikesales.com.ar/retailers/logos/000/000/204/medium/banco-credicoop.jpg?1552673321",
-                    subtitle: "Elija alguna opcion",
-                    buttons: [
-                        {
-                            type: "postback",
-                            title: "Consulta",
-                            payload: "realizar_consulta",
-                        },
-                        {
-                            type: "postback",
-                            title: "Queja o Reclamo",
-                            payload: "realizar_queja_reclamo",
-                        },
-                        {
-                            type: "postback",
-                            title: "Otro",
-                            payload: "otro",
-                        },
-                    ],
-                },
-            ]);*/
+            await sendGenericMessageMS(sender, [{
+                title: "Que operacion desea realizar",
+                image_url: "https://data.ilikesales.com.ar/retailers/logos/000/000/204/medium/banco-credicoop.jpg?1552673321",
+                subtitle: "Elija alguna opcion",
+                buttons: [{
+                        type: "postback",
+                        title: "Consulta",
+                        payload: "realizar_consulta",
+                    },
+                    {
+                        type: "postback",
+                        title: "Queja o Reclamo",
+                        payload: "realizar_queja_reclamo",
+                    },
+                    {
+                        type: "postback",
+                        title: "Otro",
+                        payload: "otro",
+                    },
+                ],
+            }, ]);
+            ticket.firstName = userData.first_name;
+            ticket.lastName = userData.last_name;
+            ticket.senderId = senderID;
+            ticket.url = url;
+            ticket.inputMethod = inputMethod;
+            if (miMapa.has(senderID)) {
+                miMapa.delete(senderID);
+            }
+            miMapa.set(senderID, ticket);
             break;
         }
         case "RealizarConsulta.action": {
@@ -310,6 +299,7 @@ async function handleDialogFlowAction(
                 sender,
                 "Esta informacion la encontrara dentro de su perfil dentro del home banking"
             );
+            addTypeOfContext(senderID, url, "Consulta", inputMethod);
             break;
         }
         case "RealizarQueja_Reclamo.action": {
@@ -319,43 +309,48 @@ async function handleDialogFlowAction(
                 sender,
                 "Esta informacion la encontrara dentro de su perfil dentro del home banking"
             );
+            addTypeOfContext(senderID, url, "Reclamo/Queja");
             break;
         }
 
         case "PedidoDeNumeroCliente.action": {
-            let userData = await getUserData(sender);
-            let newTicket = new Ticket({
-                name: userData.first_name,
-                lastName: userData.last_name,
-                idFacebook: sender,
-                idCredicoop: parameters.fields.idCredicoop.numberValue,
-                reason: "",
-                motivo: this.motivo,
-            });
-            newTicket.save();
-            this.idTicket = newTicket.id;
-            await sendTextMessageToMS(
-                sender,
-                "¿Cual es su " + this.motivo + "?"
-            );
+            let ticketIntance = miMapa.get(senderID);
+            console.log("--------------------------")
+            console.log(ticketIntance)
+            console.log("--------------------------")
+            if (ticketIntance === undefined || ticketIntance === null) {
+                handleDialogFlowAction(senderID, "Saludo.Info.action");
+            } else {
+                addIdClient(
+                    senderID,
+                    parameters.fields.uniqueIdentifier.numberValue
+                );
+                let ticketIntance = miMapa.get(senderID);
+                console.log(ticketIntance);
+                await sendTextMessageToMS(
+                    sender,
+                    "¿Cual es su " + ticketIntance.contactType + "?"
+                );
+            }
             break;
         }
         case "PreguntaMotivo.action": {
-            console.log(this.idTicket);
-            Ticket.findOneAndUpdate(
-                { _id: this.idTicket },
-                { reason: parameters.fields.answer.stringValue },
-                { upsert: true },
-                function (err, doc) {
-                    if (err) console.log(err);
-                    return console.log("Registry Succesfully saved.");
-                }
-            );
-            sendTextMessageToMS(
-                sender,
-                "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad"
-            );
+            let ticketIntance = miMapa.get(senderID);
+            console.log("--------------------------")
+            console.log(ticketIntance)
+            console.log("--------------------------")
+            if (ticketIntance === undefined || ticketIntance === null) {
+                handleDialogFlowAction(senderID, "Saludo.Info.action");
+            } else {
 
+                addAnswer(senderID, parameters.fields.userMessage.stringValue);
+                console.log(parameters.fields.userMessage.stringValue);
+                sendTextMessageToMS(
+                    sender,
+                    "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad"
+                );
+                sendTicketToJira(senderID);
+            }
             break;
         }
         case "input.unknown": {
@@ -423,10 +418,8 @@ async function handleCardMessages(messages, sender) {
                 button = {
                     type: "postback",
                     title: message.card.buttons[b].text,
-                    payload:
-                        message.card.buttons[b].postback === ""
-                            ? message.card.buttons[b].text
-                            : message.card.buttons[b].postback,
+                    payload: message.card.buttons[b].postback === "" ?
+                        message.card.buttons[b].text : message.card.buttons[b].postback,
                 };
             }
             buttons.push(button);
@@ -481,7 +474,14 @@ async function handleMessages(messages, sender) {
     }
 }
 
-async function sendToDialogFlow(senderId, messageText, hash, type) {
+async function sendToDialogFlow(
+    senderId,
+    messageText,
+    hash,
+    type,
+    url,
+    inputMethod
+) {
     //sendTypingOn(senderId);
     try {
         let result;
@@ -496,7 +496,7 @@ async function sendToDialogFlow(senderId, messageText, hash, type) {
             "FACEBOOK"
         );*/
         result = await dialogflow.sendToDialogFlow(messageText, session, type);
-        handleDialogFlowResponse(senderId, result);
+        handleDialogFlowResponse(senderId, result, type, url, inputMethod);
     } catch (error) {
         console.log("salio mal en sendToDialogflow...", error);
     }
@@ -519,7 +519,7 @@ async function sendToDialogFlow(senderId, messageText, hash, type) {
     }
 }*/
 
-function handleDialogFlowResponse(sender, response) {
+function handleDialogFlowResponse(sender, response, type, url, inputMethod) {
     let responseText = response.fulfillmentMessages.fulfillmentText;
     let messages = response.fulfillmentMessages;
     let action = response.action;
@@ -529,7 +529,16 @@ function handleDialogFlowResponse(sender, response) {
     //sendTypingOff(sender);
 
     if (isDefined(action)) {
-        handleDialogFlowAction(sender, action, messages, contexts, parameters);
+        handleDialogFlowAction(
+            sender,
+            action,
+            messages,
+            contexts,
+            parameters,
+            type,
+            url,
+            inputMethod
+        );
     } else if (isDefined(messages)) {
         handleMessages(messages, sender);
     } else if (responseText == "" && !isDefined(action)) {
@@ -544,8 +553,7 @@ async function getUserData(senderId) {
     let access_token = config.FB_PAGE_TOKEN;
     try {
         let userData = await axios.get(
-            "https://graph.facebook.com/v6.0/" + senderId,
-            {
+            "https://graph.facebook.com/v6.0/" + senderId, {
                 params: {
                     access_token,
                 },
@@ -737,8 +745,7 @@ function sendTypingOff(recipientId) {
  */
 function callSendAPI(messageData) {
     return new Promise((resolve, reject) => {
-        request(
-            {
+        request({
                 uri: "https://graph.facebook.com/v6.0/me/messages",
                 qs: {
                     access_token: config.FB_PAGE_TOKEN,
@@ -778,8 +785,13 @@ function callSendAPI(messageData) {
     });
 }
 
+/*searchTicket = (ticket) => {
+    let senderIdTicket = ticket.
+};*/
+
 function callSendAPIMS(messageData) {
-    messageData.recipient.id = senderReal;
+    //messageData.recipient.id = senderReal;
+    console.log(messageData);
     axios
         .post(endpointJava, {
             messageData: messageData,
@@ -810,7 +822,7 @@ async function receivedPostback(event) {
 
     console.log(
         "Received postback for user %d and page %d with payload '%s' " +
-            "at %d",
+        "at %d",
         senderId,
         recipientID,
         payload,
@@ -829,5 +841,51 @@ function isDefined(obj) {
 
     return obj != null;
 }
+
+addTypeOfContext = async (senderID, url, type, inputMethod) => {
+    let ticketIntance = miMapa.get(senderID);
+    let userData = await getUserData(senderID);
+    if (ticketIntance === undefined) {
+        ticket.firstName = userData.first_name;
+        ticket.lastName = userData.lastName;
+        ticket.senderId = senderID;
+        ticket.url = url;
+        ticket.inputMethod = inputMethod;
+        ticketIntance = ticket;
+    }
+    ticketIntance.contactType = type;
+    miMapa.set(senderID, ticketIntance);
+};
+
+addIdClient = async (senderID, uniqueIdentifier) => {
+    let ticketIntance = miMapa.get(senderID);
+    if (ticketIntance === undefined) {
+        handleDialogFlowAction(senderID);
+    }
+    ticketIntance.uniqueIdentifier = uniqueIdentifier;
+    miMapa.set(senderID, ticketIntance);
+};
+
+addAnswer = async (senderID, userMessage) => {
+    let ticketIntance = miMapa.get(senderID);
+    ticketIntance.userMessage = userMessage;
+    miMapa.set(senderID, ticketIntance);
+};
+
+sendTicketToJira = async (senderID) => {
+    console.log(miMapa.get(senderID));
+    axios
+        .post(endpointJira, miMapa.get(senderID))
+        .then(function (response) {
+            console.log("Successfully sent message to Jira");
+            miMapa.delete(senderID)
+            console.log(response);
+        })
+        .catch(function (error) {
+            console.log("Error on sent message");
+            miMapa.delete(senderID)
+            console.log(error);
+        });
+};
 
 module.exports = router;

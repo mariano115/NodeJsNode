@@ -16,6 +16,8 @@ const sessionClient = new dialogflow.SessionsClient({
  * @param {string} projectId The project to be used
  */
 
+
+
 async function sendToDialogFlow(msg, session, source, params) {
     let textToDialogFlow = msg;
     try {

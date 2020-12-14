@@ -13,8 +13,7 @@ app.use(
 );
 
 mongoose.connect(
-  "mongodb+srv://marianogermanguerrerodev:Pass@word@cluster1.4i0p6.mongodb.net/chatbotDB?retryWrites=true&w=majority",
-  {
+  "mongodb+srv://marianogermanguerrerodev:Pass@word@cluster1.4i0p6.mongodb.net/chatbotDB?retryWrites=true&w=majority", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
     useFindAndModify: false,
