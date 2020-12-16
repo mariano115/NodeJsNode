@@ -18,8 +18,10 @@ const Ticket = require("../Models/Tickets");
 let idTicket;
 let motivo;
 const endpointJava =
-    "https://4f045003f84f.ngrok.io/Microservice/receiveinformation";
-const endpointJira = "https://aa5835511f0c.ngrok.io/ticket";
+    "https://d0c5734e4831.ngrok.io/Microservice/receiveinformation";
+//"https://0e3836d62a52.ngrok.io/Microservice/recibirJSON"
+
+const endpointJira = "https://5812e533d7c2.ngrok.io/ticket";
 let miMapa = new Map();
 let ticket = {
     firstName: "",
@@ -258,7 +260,7 @@ async function handleDialogFlowAction(
             let userData = await getUserData(senderID);
             await sendTextMessageToMS(
                 sender,
-                "Hola " + userData.first_name + " " + userData.last_name + "!"
+                "Hola " + userData.first_name + " " + userData.last_name + "!", type
             );
             await sendGenericMessageMS(sender, [{
                 title: "Que operacion desea realizar",
@@ -280,7 +282,7 @@ async function handleDialogFlowAction(
                         payload: "otro",
                     },
                 ],
-            }, ]);
+            }, ], type);
             ticket.firstName = userData.first_name;
             ticket.lastName = userData.last_name;
             ticket.senderId = senderID;
@@ -294,20 +296,20 @@ async function handleDialogFlowAction(
         }
         case "RealizarConsulta.action": {
             this.motivo = "Consulta";
-            await sendTextMessageToMS(sender, "¿Cual es su numero de cliente?");
+            await sendTextMessageToMS(sender, "¿Cual es su numero de cliente?", type);
             await sendTextMessageToMS(
                 sender,
-                "Esta informacion la encontrara dentro de su perfil dentro del home banking"
+                "Esta informacion la encontrara dentro de su perfil dentro del home banking", type
             );
             addTypeOfContext(senderID, url, "Consulta", inputMethod);
             break;
         }
         case "RealizarQueja_Reclamo.action": {
             this.motivo = "Reclamo/Queja";
-            await sendTextMessageToMS(sender, "¿Cual es su numero de cliente?");
+            await sendTextMessageToMS(sender, "¿Cual es su numero de cliente?", type);
             await sendTextMessageToMS(
                 sender,
-                "Esta informacion la encontrara dentro de su perfil dentro del home banking"
+                "Esta informacion la encontrara dentro de su perfil dentro del home banking", type
             );
             addTypeOfContext(senderID, url, "Reclamo/Queja");
             break;
@@ -329,7 +331,7 @@ async function handleDialogFlowAction(
                 console.log(ticketIntance);
                 await sendTextMessageToMS(
                     sender,
-                    "¿Cual es su " + ticketIntance.contactType + "?"
+                    "¿Cual es su " + ticketIntance.contactType + "?", type
                 );
             }
             break;
@@ -347,14 +349,17 @@ async function handleDialogFlowAction(
                 console.log(parameters.fields.userMessage.stringValue);
                 sendTextMessageToMS(
                     sender,
-                    "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad"
+                    "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad", type
                 );
-                sendTicketToJira(senderID);
+                //PROBAR ESTO CON BRUNO
+                let res = await sendTicketToJira(senderID);
+                console.log(res)
+                if (res) sendTextMessageToMS(sender, "Tu numero de ticket es " + res.numeroDeTicket, type)
             }
             break;
         }
         case "input.unknown": {
-            await sendTextMessageToMS(sender, "Disculpa no le he entendido");
+            await sendTextMessageToMS(sender, "Disculpa no le he entendido", type);
             break;
         }
     }
@@ -570,7 +575,7 @@ async function getUserData(senderId) {
     }
 }
 
-async function sendTextMessageToMS(recipientId, text) {
+async function sendTextMessageToMS(recipientId, text, type) {
     if (text.includes("{first_name}") || text.includes("{last_name}")) {
         let userData = await getUserData(recipientId);
         text = text
@@ -584,6 +589,7 @@ async function sendTextMessageToMS(recipientId, text) {
         message: {
             text: text,
         },
+        type: type
     };
 
     await callSendAPIMS(messageData);
@@ -670,7 +676,7 @@ async function sendGenericMessage(recipientId, elements) {
     await callSendAPI(messageData);
 }
 
-async function sendGenericMessageMS(recipientId, elements) {
+async function sendGenericMessageMS(recipientId, elements, type) {
     var messageData = {
         recipient: {
             id: recipientId,
@@ -684,6 +690,7 @@ async function sendGenericMessageMS(recipientId, elements) {
                 },
             },
         },
+        type: type
     };
 
     await callSendAPIMS(messageData);
@@ -803,7 +810,7 @@ function callSendAPIMS(messageData) {
         .catch(function (error) {
             console.log("Error on sent message");
 
-            //console.log(error);
+            console.log(error);
         });
 }
 
@@ -879,13 +886,15 @@ sendTicketToJira = async (senderID) => {
         .then(function (response) {
             console.log("Successfully sent message to Jira");
             miMapa.delete(senderID)
-            console.log(response);
+            console.log(response)
+            return response
         })
         .catch(function (error) {
-            console.log("Error on sent message");
+            console.log("Error on sent message to Jira");
             miMapa.delete(senderID)
-            console.log(error);
+            //console.log(error);
         });
+
 };
 
 module.exports = router;
