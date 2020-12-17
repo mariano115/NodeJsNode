@@ -18,10 +18,10 @@ const Ticket = require("../Models/Tickets");
 let idTicket;
 let motivo;
 const endpointJava =
-    "https://d0c5734e4831.ngrok.io/Microservice/receiveinformation";
+    "https://5b89af7a0da4.ngrok.io/SocialMicroservice/receiveinformation";
 //"https://0e3836d62a52.ngrok.io/Microservice/recibirJSON"
 
-const endpointJira = "https://5812e533d7c2.ngrok.io/ticket";
+const endpointJira = "https://4c1235614394.ngrok.io/ticket";
 let miMapa = new Map();
 let ticket = {
     firstName: "",
@@ -257,6 +257,7 @@ async function handleDialogFlowAction(
 ) {
     switch (action) {
         case "Saludo.Info.action": {
+            //CAMBIAR EL ATRIBUTO GLOBAL senderID por uno real desharcodeado cuando este la integracion final con facebook
             let userData = await getUserData(senderID);
             await sendTextMessageToMS(
                 sender,
@@ -285,13 +286,13 @@ async function handleDialogFlowAction(
             }, ], type);
             ticket.firstName = userData.first_name;
             ticket.lastName = userData.last_name;
-            ticket.senderId = senderID;
+            ticket.senderId = sender;
             ticket.url = url;
             ticket.inputMethod = inputMethod;
-            if (miMapa.has(senderID)) {
-                miMapa.delete(senderID);
+            if (miMapa.has(sender)) {
+                miMapa.delete(sender);
             }
-            miMapa.set(senderID, ticket);
+            miMapa.set(sender, ticket);
             break;
         }
         case "RealizarConsulta.action": {
@@ -301,7 +302,7 @@ async function handleDialogFlowAction(
                 sender,
                 "Esta informacion la encontrara dentro de su perfil dentro del home banking", type
             );
-            addTypeOfContext(senderID, url, "Consulta", inputMethod);
+            addTypeOfContext(sender, url, "Consulta", inputMethod);
             break;
         }
         case "RealizarQueja_Reclamo.action": {
@@ -311,23 +312,23 @@ async function handleDialogFlowAction(
                 sender,
                 "Esta informacion la encontrara dentro de su perfil dentro del home banking", type
             );
-            addTypeOfContext(senderID, url, "Reclamo/Queja");
+            addTypeOfContext(sender, url, "Reclamo/Queja");
             break;
         }
 
         case "PedidoDeNumeroCliente.action": {
-            let ticketIntance = miMapa.get(senderID);
+            let ticketIntance = miMapa.get(sender);
             console.log("--------------------------")
             console.log(ticketIntance)
             console.log("--------------------------")
             if (ticketIntance === undefined || ticketIntance === null) {
-                handleDialogFlowAction(senderID, "Saludo.Info.action");
+                handleDialogFlowAction(sender, "Saludo.Info.action");
             } else {
                 addIdClient(
-                    senderID,
+                    sender,
                     parameters.fields.uniqueIdentifier.numberValue
                 );
-                let ticketIntance = miMapa.get(senderID);
+                let ticketIntance = miMapa.get(sender);
                 console.log(ticketIntance);
                 await sendTextMessageToMS(
                     sender,
@@ -337,24 +338,20 @@ async function handleDialogFlowAction(
             break;
         }
         case "PreguntaMotivo.action": {
-            let ticketIntance = miMapa.get(senderID);
-            console.log("--------------------------")
-            console.log(ticketIntance)
-            console.log("--------------------------")
+            let ticketIntance = miMapa.get(sender);
             if (ticketIntance === undefined || ticketIntance === null) {
-                handleDialogFlowAction(senderID, "Saludo.Info.action");
+                handleDialogFlowAction(sender, "Saludo.Info.action");
             } else {
 
-                addAnswer(senderID, parameters.fields.userMessage.stringValue);
-                console.log(parameters.fields.userMessage.stringValue);
+                addAnswer(sender, parameters.fields.userMessage.stringValue);
+                //console.log(parameters.fields.userMessage.stringValue);
                 sendTextMessageToMS(
                     sender,
                     "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad", type
                 );
                 //PROBAR ESTO CON BRUNO
-                let res = await sendTicketToJira(senderID);
-                console.log(res)
-                if (res) sendTextMessageToMS(sender, "Tu numero de ticket es " + res.numeroDeTicket, type)
+                sendTicketToJira(sender, type);
+
             }
             break;
         }
@@ -849,49 +846,50 @@ function isDefined(obj) {
     return obj != null;
 }
 
-addTypeOfContext = async (senderID, url, type, inputMethod) => {
-    let ticketIntance = miMapa.get(senderID);
+addTypeOfContext = async (sender, url, type, inputMethod) => {
+    let ticketIntance = miMapa.get(sender);
+    //CAMBIAR EL ATRIBUTO GLOBAL senderID por uno real desharcodeado cuando este la integracion final con facebook
     let userData = await getUserData(senderID);
     if (ticketIntance === undefined) {
         ticket.firstName = userData.first_name;
         ticket.lastName = userData.lastName;
-        ticket.senderId = senderID;
+        ticket.senderId = sender;
         ticket.url = url;
         ticket.inputMethod = inputMethod;
         ticketIntance = ticket;
     }
     ticketIntance.contactType = type;
-    miMapa.set(senderID, ticketIntance);
+    miMapa.set(sender, ticketIntance);
 };
 
-addIdClient = async (senderID, uniqueIdentifier) => {
-    let ticketIntance = miMapa.get(senderID);
+addIdClient = async (sender, uniqueIdentifier) => {
+    let ticketIntance = miMapa.get(sender);
     if (ticketIntance === undefined) {
-        handleDialogFlowAction(senderID);
+        handleDialogFlowAction(sender);
     }
     ticketIntance.uniqueIdentifier = uniqueIdentifier;
-    miMapa.set(senderID, ticketIntance);
+    miMapa.set(sender, ticketIntance);
 };
 
-addAnswer = async (senderID, userMessage) => {
-    let ticketIntance = miMapa.get(senderID);
+addAnswer = async (sender, userMessage) => {
+    let ticketIntance = miMapa.get(sender);
     ticketIntance.userMessage = userMessage;
-    miMapa.set(senderID, ticketIntance);
+    miMapa.set(sender, ticketIntance);
 };
 
-sendTicketToJira = async (senderID) => {
-    console.log(miMapa.get(senderID));
+sendTicketToJira = async (senderIDJira, type) => {
+    console.log(miMapa.get(senderIDJira));
+    const id = senderIDJira;
     axios
-        .post(endpointJira, miMapa.get(senderID))
-        .then(function (response) {
+        .post(endpointJira, miMapa.get(senderIDJira))
+        .then(async function (response) {
             console.log("Successfully sent message to Jira");
-            miMapa.delete(senderID)
-            console.log(response)
-            return response
+            miMapa.delete(senderIDJira)
+            sendTextMessageToMS(id, "Tu numero de ticket es : " + response.data[0].ticketKey, type)
         })
         .catch(function (error) {
             console.log("Error on sent message to Jira");
-            miMapa.delete(senderID)
+            miMapa.delete(senderIDJira)
             //console.log(error);
         });
 
