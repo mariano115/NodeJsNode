@@ -7,6 +7,7 @@ const axios = require("axios");
 //files
 const config = require("../config");
 const dialogflow = require("../dialogflow");
+const jira = require("./jira");
 const {
     structProtoToJson
 } = require("./helpers/structFunctions");
@@ -17,11 +18,10 @@ const Ticket = require("../Models/Tickets");
 //variables
 let idTicket;
 let motivo;
-const endpointJava =
-    "https://5b89af7a0da4.ngrok.io/SocialMicroservice/receiveinformation";
-//"https://0e3836d62a52.ngrok.io/Microservice/recibirJSON"
 
-const endpointJira = "https://4c1235614394.ngrok.io/ticket";
+const endpointJava = config.ENDPOINT_SOCIAL_MICROSERVICE;
+const endpointJira = config.ENDPOINT_JIRA_BACKEND;
+
 let miMapa = new Map();
 let ticket = {
     firstName: "",
@@ -58,9 +58,6 @@ if (!config.FB_APP_SECRET) {
 }
 
 const sessionIds = new Map();
-
-
-// for Facebook verification
 
 router.post("/dialogFlow/", function (req, res) {
     if (req) {
@@ -168,9 +165,9 @@ async function handleDialogFlowAction(
 
         case "PedidoDeNumeroCliente.action": {
             let ticketIntance = miMapa.get(sender);
-            console.log("--------------------------")
-            console.log(ticketIntance)
-            console.log("--------------------------")
+            //console.log("--------------------------")
+            //console.log(ticketIntance)
+            //console.log("--------------------------")
             if (ticketIntance === undefined || ticketIntance === null) {
                 handleDialogFlowAction(sender, "Saludo.Info.action");
             } else {
@@ -195,13 +192,28 @@ async function handleDialogFlowAction(
 
                 addAnswer(sender, parameters.fields.userMessage.stringValue);
                 //console.log(parameters.fields.userMessage.stringValue);
-                sendTextMessageToMS(
+                /*sendTextMessageToMS(
                     sender,
                     "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad", type
-                );
+                );*/
                 //PROBAR ESTO CON BRUNO
-                sendTicketToJira(sender, type);
-
+                //sendTicketToJira(sender, type);
+                
+                let response = await sendTicketAndDelete(sender);
+                console.log(response);
+                if (response === undefined) {
+                    sendTextMessageToMS(
+                        sender,
+                        "Disculpá, no pudimos generar tu ticket en este momento. Por favor, volvé a intentar más tarde.",
+                        type);
+                } else {
+                    sendTextMessageToMS(
+                        sender,
+                        "Perfecto tu ticket se genero correctamente este sera revisado por un representante a la brevedad",
+                        type
+                    );
+                    sendTextMessageToMS(sender, "Tu numero de ticket es : " + response.data[0].ticketKey, type);
+                }
             }
             break;
         }
@@ -405,6 +417,28 @@ addAnswer = async (sender, userMessage) => {
     miMapa.set(sender, ticketIntance);
 };
 
+function sendTicketAndDelete(senderIDJira) {
+    return jira.sendTicket(miMapa.get(senderIDJira));
+}
+
+// Necesita ser async?
+// function sendTicketAndDelete(senderIDJira) {
+//     let response = undefined;
+//     try {
+//         response = jira.sendTicket(miMapa.get(senderIDJira));
+//         console.log(response);
+//     } catch (err) {
+//         console.log("fallé");
+//         console.log(err);
+//     } finally {
+//         miMapa.delete(senderIDJira);
+//     }
+    
+//     console.log(response);
+
+//     return response;
+// }
+
 sendTicketToJira = async (senderIDJira, type) => {
     console.log(miMapa.get(senderIDJira));
     const id = senderIDJira;
@@ -413,7 +447,7 @@ sendTicketToJira = async (senderIDJira, type) => {
         .then(async function (response) {
             console.log("Successfully sent message to Jira");
             miMapa.delete(senderIDJira)
-            sendTextMessageToMS(id, "Tu numero de ticket es : " + response.data[0].ticketKey, type)
+            sendTextMessageToMS(id, "Tu numero de ticket es : " + response.data[0].ticketKey, type);
         })
         .catch(function (error) {
             console.log("Error on sent message to Jira");
