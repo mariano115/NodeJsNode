@@ -1,5 +1,5 @@
 const express = require("express");
-const Ticket = require("../Facebook/Ticket");
+const Ticket = require("../Bot/Ticket");
 const router = express.Router();
 
 router.get("/", (req, res) => {
